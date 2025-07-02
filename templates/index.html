@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Status Monitor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .summary-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .summary-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .summary-card h3 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .summary-card p {
+            color: #666;
+            font-size: 1rem;
+        }
+
+        .operational { color: #22c55e; }
+        .degraded { color: #f59e0b; }
+        .down { color: #ef4444; }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+        }
+
+        .status-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .status-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+
+        .status-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: #22c55e;
+            transition: background 0.3s ease;
+        }
+
+        .status-card.degraded::before {
+            background: #f59e0b;
+        }
+
+        .status-card.down::before {
+            background: #ef4444;
+        }
+
+        .status-card.unknown::before {
+            background: #6b7280;
+        }
+
+        .service-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .service-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .service-icon {
+            font-size: 2rem;
+        }
+
+        .service-name {
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.operational {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-badge.degraded {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-badge.down {
+            background: #fecaca;
+            color: #991b1b;
+        }
+
+        .status-badge.unknown {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .service-details {
+            color: #6b7280;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .detail-label {
+            font-weight: 500;
+        }
+
+        .response-time {
+            color: #059669;
+            font-weight: 600;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: white;
+            font-size: 1.2rem;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .last-update {
+            text-align: center;
+            margin-top: 40px;
+            color: rgba(255,255,255,0.8);
+            font-size: 0.9rem;
+        }
+
+        .auto-refresh {
+            display: inline-block;
+            margin-left: 10px;
+            padding: 4px 8px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 12px;
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .status-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .summary {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 Website Status Monitor</h1>
+            <p>Real-time monitoring of major websites and services</p>
+        </div>
+
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading website status data...</p>
+        </div>
+
+        <div id="content" style="display: none;">
+            <div id="summary" class="summary">
+                <!-- Summary cards will be populated by JavaScript -->
+            </div>
+
+            <div id="status-grid" class="status-grid">
+                <!-- Status cards will be populated by JavaScript -->
+            </div>
+
+            <div class="last-update">
+                <span id="last-update-time">Never</span>
+                <span class="auto-refresh">Auto-refresh: 30s</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let statusData = {};
+        let updateInterval;
+
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                statusData = await response.json();
+                updateDisplay();
+            } catch (error) {
+                console.error('Error fetching status:', error);
+                showError('Failed to fetch status data. Retrying...');
+            }
+        }
+
+        function updateDisplay() {
+            updateSummary();
+            updateStatusGrid();
+            updateLastUpdateTime();
+            
+            // Hide loading and show content
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('content').style.display = 'block';
+        }
+
+        function updateSummary() {
+            const summaryDiv = document.getElementById('summary');
+            summaryDiv.innerHTML = `
+                <div class="summary-card">
+                    <h3 class="operational">${statusData.operational_count}</h3>
+                    <p>Operational</p>
+                </div>
+                <div class="summary-card">
+                    <h3 class="degraded">${statusData.degraded_count}</h3>
+                    <p>Degraded</p>
+                </div>
+                <div class="summary-card">
+                    <h3 class="down">${statusData.down_count}</h3>
+                    <p>Down</p>
+                </div>
+                <div class="summary-card">
+                    <h3>${statusData.total_websites}</h3>
+                    <p>Total Services</p>
+                </div>
+            `;
+        }
+
+        function updateStatusGrid() {
+            const gridDiv = document.getElementById('status-grid');
+            gridDiv.innerHTML = '';
+
+            statusData.websites.forEach(website => {
+                const card = document.createElement('div');
+                card.className = `status-card ${website.status}`;
+                
+                const responseTimeText = website.response_time 
+                    ? `${website.response_time}ms` 
+                    : 'N/A';
+
+                const statusCodeText = website.status_code || 'N/A';
+
+                card.innerHTML = `
+                    <div class="service-header">
+                        <div class="service-info">
+                            <span class="service-icon">${website.icon}</span>
+                            <span class="service-name">${website.name}</span>
+                        </div>
+                        <span class="status-badge ${website.status}">${website.status}</span>
+                    </div>
+                    <div class="service-details">
+                        <div class="detail-row">
+                            <span class="detail-label">Status:</span>
+                            <span>${website.message}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Response Time:</span>
+                            <span class="response-time">${responseTimeText}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Status Code:</span>
+                            <span>${statusCodeText}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Last Checked:</span>
+                            <span>${website.last_checked}</span>
+                        </div>
+                    </div>
+                `;
+
+                gridDiv.appendChild(card);
+            });
+        }
+
+        function updateLastUpdateTime() {
+            const timeElement = document.getElementById('last-update-time');
+            timeElement.textContent = `Last updated: ${statusData.last_update}`;
+        }
+
+        function showError(message) {
+            const loading = document.getElementById('loading');
+            loading.innerHTML = `
+                <div style="color: #fecaca;">
+                    <p>⚠️ ${message}</p>
+                </div>
+            `;
+        }
+
+        function startAutoRefresh() {
+            // Clear any existing interval
+            if (updateInterval) {
+                clearInterval(updateInterval);
+            }
+            
+            // Set up auto-refresh every 30 seconds
+            updateInterval = setInterval(fetchStatus, 30000);
+        }
+
+        // Initialize the dashboard
+        async function init() {
+            await fetchStatus();
+            startAutoRefresh();
+        }
+
+        // Start the application
+        init();
+
+        // Refresh when page becomes visible again
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                fetchStatus();
+            }
+        });
+    </script>
+</body>
+</html> 
