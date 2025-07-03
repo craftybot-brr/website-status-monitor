@@ -143,4 +143,13 @@ gecko-crash-helper-pipe.*
 MozillaUpdateLock-*
 com.apple.launchd.*/
 powerlog/
-tmp-mount-*/ 
+tmp-mount-*/
+
+# SSH Keys
+*.pub
+id_rsa*
+id_ed25519*
+id_dsa*
+id_ecdsa*
+*.pem
+*.key
