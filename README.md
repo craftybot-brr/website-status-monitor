@@ -9,6 +9,7 @@ A real-time web application that monitors the status of major websites and servi
 ## ✨ Features
 
 - **Real-time Monitoring**: Continuously monitors 40 major websites every 60 seconds
+- **Azure Speed Test**: A dashboard to monitor Azure storage endpoints across different regions.
 - **Parallel Checks**: Uses a thread pool for concurrent status updates
 - **Beautiful Dashboard**: Modern, responsive UI with gradient backgrounds and animated cards
 - **Status Categories**: Categorizes websites as Operational, Degraded, or Down
@@ -24,6 +25,7 @@ A real-time web application that monitors the status of major websites and servi
 
 ## 🚀 Monitored Services
 
+### Major Websites
 - 🔍 **Google** - Search engine
 - 📺 **YouTube** - Video platform
 - 👥 **Facebook** - Social network
@@ -34,6 +36,9 @@ A real-time web application that monitors the status of major websites and servi
 - 🎮 **Discord** - Communication platform
 - 🎬 **Netflix** - Streaming service
 - 📦 **Amazon** - E-commerce platform
+
+### Cloud Services
+- **Azure Speed Test**: Monitors Azure storage endpoints across various regions.
 
 ## 🛠️ Installation
 
@@ -96,6 +101,11 @@ This will:
 
 6. **Access the dashboard**:
    Open your browser and navigate to `http://localhost`
+
+## API Endpoints
+
+- `/api/status`: Get the status of all monitored websites.
+- `/api/azure/status`: Get the status of all monitored Azure endpoints.
 
 ## 🎮 Service Management
 
@@ -327,4 +337,4 @@ If you have any questions or run into issues, please [open an issue](https://git
 
 ---
 
-Made with ❤️ by [craftybot](https://github.com/craftybot-brr) 
+Made with ❤️ by [craftybot](https://github.com/craftybot-brr)
