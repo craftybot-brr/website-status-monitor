@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import sqlite3
 from ping3 import ping
 import socket
+from endpoints import EC2_ENDPOINTS, AZURE_ENDPOINTS
 
 app = Flask(__name__)
 app.config.update(
@@ -183,61 +184,9 @@ PAGES = {
     },
 }
 
-# EC2 Endpoints for ICMP monitoring - AWS Regional Endpoints
-EC2_ENDPOINTS = {
-    "americas": {
-        "name": "Americas Regions",
-        "endpoints": [
-            {"name": "US East 1 (N. Virginia)", "ip": "ec2.us-east-1.amazonaws.com", "icon": "🇺🇸"},
-            {"name": "US East 2 (Ohio)", "ip": "ec2.us-east-2.amazonaws.com", "icon": "🇺🇸"},
-            {"name": "US West 1 (N. California)", "ip": "ec2.us-west-1.amazonaws.com", "icon": "🇺🇸"},
-            {"name": "US West 2 (Oregon)", "ip": "ec2.us-west-2.amazonaws.com", "icon": "🇺🇸"},
-            {"name": "Canada Central", "ip": "ec2.ca-central-1.amazonaws.com", "icon": "🇨🇦"},
-            {"name": "Canada West", "ip": "ec2.ca-west-1.amazonaws.com", "icon": "🇨🇦"},
-            {"name": "Mexico Central", "ip": "ec2.mx-central-1.amazonaws.com", "icon": "🇲🇽"},
-            {"name": "South America (São Paulo)", "ip": "ec2.sa-east-1.amazonaws.com", "icon": "🇧🇷"},
-        ],
-    },
-    "europe": {
-        "name": "Europe Regions",
-        "endpoints": [
-            {"name": "Europe West 1 (Ireland)", "ip": "ec2.eu-west-1.amazonaws.com", "icon": "🇮🇪"},
-            {"name": "Europe West 2 (London)", "ip": "ec2.eu-west-2.amazonaws.com", "icon": "🇬🇧"},
-            {"name": "Europe West 3 (Paris)", "ip": "ec2.eu-west-3.amazonaws.com", "icon": "🇫🇷"},
-            {"name": "Europe Central 1 (Frankfurt)", "ip": "ec2.eu-central-1.amazonaws.com", "icon": "🇩🇪"},
-            {"name": "Europe Central 2 (Zurich)", "ip": "ec2.eu-central-2.amazonaws.com", "icon": "🇨🇭"},
-            {"name": "Europe North 1 (Stockholm)", "ip": "ec2.eu-north-1.amazonaws.com", "icon": "🇸🇪"},
-            {"name": "Europe South 1 (Milan)", "ip": "ec2.eu-south-1.amazonaws.com", "icon": "🇮🇹"},
-            {"name": "Europe South 2 (Spain)", "ip": "ec2.eu-south-2.amazonaws.com", "icon": "🇪🇸"},
-        ],
-    },
-    "asia_pacific": {
-        "name": "Asia Pacific Regions",
-        "endpoints": [
-            {"name": "Asia Pacific Northeast 1 (Tokyo)", "ip": "ec2.ap-northeast-1.amazonaws.com", "icon": "🇯🇵"},
-            {"name": "Asia Pacific Northeast 2 (Seoul)", "ip": "ec2.ap-northeast-2.amazonaws.com", "icon": "🇰🇷"},
-            {"name": "Asia Pacific Northeast 3 (Osaka)", "ip": "ec2.ap-northeast-3.amazonaws.com", "icon": "🇯🇵"},
-            {"name": "Asia Pacific Southeast 1 (Singapore)", "ip": "ec2.ap-southeast-1.amazonaws.com", "icon": "🇸🇬"},
-            {"name": "Asia Pacific Southeast 2 (Sydney)", "ip": "ec2.ap-southeast-2.amazonaws.com", "icon": "🇦🇺"},
-            {"name": "Asia Pacific Southeast 3 (Jakarta)", "ip": "ec2.ap-southeast-3.amazonaws.com", "icon": "🇮🇩"},
-            {"name": "Asia Pacific Southeast 4 (Melbourne)", "ip": "ec2.ap-southeast-4.amazonaws.com", "icon": "🇦🇺"},
-            {"name": "Asia Pacific Southeast 5 (Malaysia)", "ip": "ec2.ap-southeast-5.amazonaws.com", "icon": "🇲🇾"},
-            {"name": "Asia Pacific Southeast 7 (Thailand)", "ip": "ec2.ap-southeast-7.amazonaws.com", "icon": "🇹🇭"},
-            {"name": "Asia Pacific South 1 (Mumbai)", "ip": "ec2.ap-south-1.amazonaws.com", "icon": "🇮🇳"},
-            {"name": "Asia Pacific South 2 (Hyderabad)", "ip": "ec2.ap-south-2.amazonaws.com", "icon": "🇮�"},
-            {"name": "Asia Pacific East 1 (Hong Kong)", "ip": "ec2.ap-east-1.amazonaws.com", "icon": "🇭🇰"},
-        ],
-    },
-    "middle_east_africa": {
-        "name": "Middle East & Africa",
-        "endpoints": [
-            {"name": "Middle East Central 1 (UAE)", "ip": "ec2.me-central-1.amazonaws.com", "icon": "🇦🇪"},
-            {"name": "Middle East South 1 (Bahrain)", "ip": "ec2.me-south-1.amazonaws.com", "icon": "🇧🇭"},
-            {"name": "Israel Central 1 (Tel Aviv)", "ip": "ec2.il-central-1.amazonaws.com", "icon": "🇮🇱"},
-            {"name": "Africa South 1 (Cape Town)", "ip": "ec2.af-south-1.amazonaws.com", "icon": "🇿�"},
-        ],
-    },
-}
+# Global variable to store Azure status data
+azure_status_data_lock = threading.Lock()
+azure_status_data = {}
 
 # Global variable to store status data with thread safety
 status_data_lock = threading.Lock()
@@ -368,7 +317,6 @@ def check_tcp_connectivity(endpoint):
             
             if result == 0:
                 # Successful connection
-                status["ping_time"] = total_time
                 status["connection_time"] = total_time
                 
                 # Determine status based on connection time
@@ -384,7 +332,6 @@ def check_tcp_connectivity(endpoint):
             else:
                 # Connection failed
                 status["status"] = "down"
-                status["ping_time"] = None
                 status["connection_time"] = None
                 
                 # Try to determine why connection failed
@@ -401,7 +348,6 @@ def check_tcp_connectivity(endpoint):
                 "icon": icon,
                 "status": "down",
                 "response_time": 10000,  # Timeout time
-                "ping_time": None,
                 "connection_time": None,
                 "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "message": "TCP connection timeout (10s)",
@@ -413,7 +359,6 @@ def check_tcp_connectivity(endpoint):
                 "icon": icon,
                 "status": "down",
                 "response_time": None,
-                "ping_time": None,
                 "connection_time": None,
                 "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "message": f"TCP connection error: {str(e)[:30]}",
@@ -433,6 +378,144 @@ def check_tcp_connectivity(endpoint):
         }
     
     return status
+
+def check_azure_connectivity(endpoint):
+    """Check the status of an Azure endpoint using TCP connectivity check"""
+    name = endpoint["name"]
+    hostname = endpoint["endpoint"]
+    region = endpoint["region"]
+    icon = endpoint["icon"]
+    
+    try:
+        start_time = time.time()
+        
+        # Use TCP connectivity check to Azure Storage endpoints
+        # Azure Storage blob service typically uses port 443 (HTTPS)
+        test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        test_socket.settimeout(10)  # 10 second timeout
+        
+        try:
+            # Try to connect to port 443 (HTTPS) - Azure Storage blob service
+            result = test_socket.connect_ex((hostname, 443))
+            test_socket.close()
+            
+            total_time = int((time.time() - start_time) * 1000)  # Total time in ms
+            
+            status = {
+                "name": name,
+                "endpoint": hostname,
+                "region": region,
+                "icon": icon,
+                "response_time": total_time,
+                "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            
+            if result == 0:
+                # Successful connection
+                status["connection_time"] = total_time
+                
+                # Determine status based on connection time
+                if total_time > 5000:  # 5 seconds
+                    status["status"] = "degraded"
+                    status["message"] = f"High latency ({total_time} ms)"
+                elif total_time > 2000:  # 2 seconds
+                    status["status"] = "degraded"
+                    status["message"] = f"Elevated latency ({total_time} ms)"
+                else:
+                    status["status"] = "operational"
+                    status["message"] = f"TCP connection OK ({total_time} ms)"
+            else:
+                # Connection failed
+                status["status"] = "down"
+                status["connection_time"] = None
+                
+                # Try to determine why connection failed
+                try:
+                    socket.gethostbyname(hostname)
+                    status["message"] = f"TCP connection failed (port 443 blocked or service down)"
+                except socket.gaierror:
+                    status["message"] = "DNS resolution failed"
+                    
+        except socket.timeout:
+            status = {
+                "name": name,
+                "endpoint": hostname,
+                "region": region,
+                "icon": icon,
+                "status": "down",
+                "response_time": 10000,  # Timeout time
+                "connection_time": None,
+                "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "message": "TCP connection timeout (10s)",
+            }
+        except Exception as e:
+            status = {
+                "name": name,
+                "endpoint": hostname,
+                "region": region,
+                "icon": icon,
+                "status": "down",
+                "response_time": None,
+                "connection_time": None,
+                "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "message": f"TCP connection error: {str(e)[:30]}",
+            }
+            
+    except Exception as e:
+        status = {
+            "name": name,
+            "endpoint": hostname,
+            "region": region,
+            "icon": icon,
+            "status": "down",
+            "response_time": None,
+            "ping_time": None,
+            "connection_time": None,
+            "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "message": f"Error: {str(e)[:50]}",
+        }
+    
+    return status
+
+def update_azure_status_data():
+    """Update status data for all Azure endpoints using parallel processing."""
+    global azure_status_data
+    start_time = time.time()
+    print(f"\n🔄 Updating Azure status data... [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]")
+    
+    new_status_data = {}
+    tasks = {}
+    
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        # Flatten the list of endpoints to check
+        all_endpoints = [endpoint for region in AZURE_ENDPOINTS.values() for endpoint in region["endpoints"]]
+        
+        # Submit all tasks
+        for endpoint in all_endpoints:
+            future = executor.submit(check_azure_connectivity, endpoint)
+            tasks[future] = endpoint["name"]
+            
+        # Collect results as they complete
+        for future in as_completed(tasks):
+            endpoint_name = tasks[future]
+            try:
+                result = future.result()
+                new_status_data[endpoint_name] = result
+            except Exception as e:
+                print(f"   - Error checking {endpoint_name}: {e}")
+
+    # Thread-safe update
+    with azure_status_data_lock:
+        azure_status_data = new_status_data
+    
+    update_duration = time.time() - start_time
+    total_endpoints = len(new_status_data)
+    operational_count = len([s for s in new_status_data.values() if s['status'] == 'operational'])
+    degraded_count = len([s for s in new_status_data.values() if s['status'] == 'degraded'])
+    down_count = len([s for s in new_status_data.values() if s['status'] == 'down'])
+    
+    print(f"📊 Azure update complete: {total_endpoints} endpoints checked in {update_duration:.2f}s")
+    print(f"   Status: {operational_count} operational, {degraded_count} degraded, {down_count} down")
 
 def update_status_data():
     """Update status data for all websites across all pages using parallel processing."""
@@ -525,25 +608,26 @@ def update_ec2_status_data():
     print(f"   Status: {operational_count} operational, {degraded_count} degraded, {down_count} down")
     print(f"   Next update in 60 seconds\n")
 
-def background_monitor():
-    """Background thread that refreshes status data every 60 seconds."""
-    while True:
-        update_status_data()
-        time.sleep(60)
-
-def background_ec2_monitor():
-    """Background thread that refreshes EC2 status data every 60 seconds."""
-    while True:
-        update_ec2_status_data()
-        time.sleep(60)
+# --- Routes ---
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    page_num = request.args.get("page", 1, type=int)
+    return render_template("index.html", pages=PAGES, current_page=page_num)
 
-@app.route("/api/status", methods=["GET"])
-def get_status():
-    """API endpoint to get current status of all websites or a specific page"""
+@app.route("/ec2")
+def ec2_status():
+    """Render the EC2 status page"""
+    return render_template("ec2.html", regions=EC2_ENDPOINTS)
+
+@app.route("/azure")
+def azure_status():
+    """Render the Azure status page"""
+    return render_template("azure.html", regions=AZURE_ENDPOINTS)
+
+@app.route("/api/status")
+def api_status():
+    """Return the current status data as JSON"""
     page = request.args.get('page', type=int)
     timestamp = request.args.get('_t')  # Cache-busting parameter
     force_id = request.args.get('force')  # Force refresh parameter
@@ -688,10 +772,6 @@ def get_uptime(website_name):
         }
     )
 
-@app.route("/ec2")
-def ec2_monitor():
-    return render_template("ec2.html")
-
 @app.route("/api/ec2/status", methods=["GET"])
 def get_ec2_status():
     """API endpoint to get current status of all EC2 endpoints or a specific environment"""
@@ -766,62 +846,96 @@ def get_ec2_status():
             print(f"   📄 Returning all EC2 data: {len(all_endpoints)} endpoints across {len(EC2_ENDPOINTS)} environments (CF: {cf_cache_status})")
             return jsonify(response_data)
 
-@app.route("/api/ec2/environments")
-def get_ec2_environments():
-    """API endpoint to get all EC2 environments"""
-    timestamp = request.args.get('_t')  # Cache-busting parameter
-    print(f"🌐 EC2 API Request: /api/ec2/environments?_t={timestamp} [{datetime.now().strftime('%H:%M:%S')}]")
+@app.route("/api/azure/status")
+def api_azure_status():
+    """Return the current Azure status data as JSON"""
+    with azure_status_data_lock:
+        return jsonify(azure_status_data)
+
+@app.route("/history")
+def history():
+    """Display historical status data"""
+    return render_template("history.html")
+
+@app.route("/api/history")
+def api_history():
+    """API endpoint to get historical status data"""
+    limit = request.args.get('limit', 50, type=int)
+    offset = request.args.get('offset', 0, type=int)
+    website_name = request.args.get('website')
     
-    response_data = {
-        "environments": {env: data["name"] for env, data in EC2_ENDPOINTS.items()},
-        "total_environments": len(EC2_ENDPOINTS),
-        "timestamp": int(time.time()),
-        "cache_buster": timestamp
-    }
-    print(f"   📄 Returning {len(EC2_ENDPOINTS)} environments")
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    
+    if website_name:
+        c.execute(
+            "SELECT status, status_code, response_time, checked_at FROM history WHERE name=? ORDER BY id DESC LIMIT ? OFFSET ?",
+            (website_name, limit, offset),
+        )
+    else:
+        c.execute(
+            "SELECT name, url, status, status_code, response_time, checked_at FROM history ORDER BY id DESC LIMIT ? OFFSET ?",
+            (limit, offset),
+        )
+    
+    rows = c.fetchall()
+    conn.close()
+    
+    # Format the results
+    if website_name:
+        history = [
+            {
+                "status": r[0],
+                "status_code": r[1],
+                "response_time": r[2],
+                "checked_at": r[3],
+            }
+            for r in rows
+        ]
+        response_data = {"name": website_name, "history": history, "count": len(history)}
+    else:
+        history = [
+            {
+                "name": r[0],
+                "url": r[1],
+                "status": r[2],
+                "status_code": r[3],
+                "response_time": r[4],
+                "checked_at": r[5],
+            }
+            for r in rows
+        ]
+        response_data = {"history": history, "count": len(history)}
+    
     return jsonify(response_data)
 
-@app.route("/api/ec2/endpoint/<endpoint_name>")
-def get_ec2_endpoint_status(endpoint_name):
-    """API endpoint to get status of a specific EC2 endpoint"""
-    with ec2_status_data_lock:
-        for status in ec2_status_data.values():
-            if status['name'].lower() == endpoint_name.lower():
-                return jsonify(status)
-    
-    return jsonify({'error': 'Endpoint not found'}), 404
+def run_scheduler(update_function, interval):
+    """Run a function periodically with a fixed interval"""
+    while True:
+        try:
+            update_function()
+        except Exception as e:
+            print(f"Error in scheduler: {e}")
+        time.sleep(interval)
 
+# Start the background threads to update data
 if __name__ == "__main__":
-    print("Initializing website status monitor with pages system...")
-    print(f"Total pages: {len(PAGES)}")
-    print(f"Total websites: {sum(len(p['websites']) for p in PAGES.values())}")
-    print(f"Total EC2 environments: {len(EC2_ENDPOINTS)}")
-    print(f"Total EC2 endpoints: {sum(len(env['endpoints']) for env in EC2_ENDPOINTS.values())}")
+    init_db()  # Ensure the database is initialized
+    
+    # Start the website status update thread
+    status_thread = threading.Thread(target=run_scheduler, args=(update_status_data, 60))
+    status_thread.daemon = True
+    status_thread.start()
+    
+    # Start the EC2 status update thread
+    ec2_thread = threading.Thread(target=run_scheduler, args=(update_ec2_status_data, 120))
+    ec2_thread.daemon = True
+    ec2_thread.start()
 
-    # Initialize database
-    init_db()
+    # Start the Azure status update thread
+    azure_thread = threading.Thread(target=run_scheduler, args=(update_azure_status_data, 120))
+    azure_thread.daemon = True
+    azure_thread.start()
 
-    # Initial status updates
-    update_status_data()
-    update_ec2_status_data()
-
-    # Start background monitors
-    monitor_thread = threading.Thread(target=background_monitor, daemon=True)
-    monitor_thread.start()
-
-    ec2_monitor_thread = threading.Thread(target=background_ec2_monitor, daemon=True)
-    ec2_monitor_thread.start()
-
-    # Get configuration
-    debug = os.getenv("FLASK_DEBUG", "0") == "1"
-    port = int(os.getenv("PORT", "80"))
-
-    print("Starting Flask application...")
-    try:
-        app.run(host="0.0.0.0", port=port, debug=debug, threaded=True)
-    except KeyboardInterrupt:
-        print("\nKeyboard interrupt received, shutting down...")
-    except Exception as e:
-        print(f"Error starting application: {e}")
-    finally:
-        print("Application stopped.")
+    # Run the Flask app
+    app.run(host="0.0.0.0", port=8080)
