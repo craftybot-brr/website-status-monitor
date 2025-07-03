@@ -1,4 +1,4 @@
-# 🌐 Website Status Monitor
+- # 🌐 Website Status Monitor
 
 A real-time web application that monitors the status of major websites and services, built with Flask and featuring a beautiful, responsive dashboard.
 
@@ -9,6 +9,7 @@ A real-time web application that monitors the status of major websites and servi
 ## ✨ Features
 
 - **Real-time Monitoring**: Continuously monitors 40 major websites every 60 seconds
+- **Azure Speed Test**: A dashboard to monitor Azure storage endpoints across different regions.
 - **Parallel Checks**: Uses a thread pool for concurrent status updates
 - **Beautiful Dashboard**: Modern, responsive UI with gradient backgrounds and animated cards
 - **Status Categories**: Categorizes websites as Operational, Degraded, or Down
@@ -24,6 +25,7 @@ A real-time web application that monitors the status of major websites and servi
 
 ## 🚀 Monitored Services
 
+### Major Websites
 - 🔍 **Google** - Search engine
 - 📺 **YouTube** - Video platform
 - 👥 **Facebook** - Social network
@@ -35,18 +37,44 @@ A real-time web application that monitors the status of major websites and servi
 - 🎬 **Netflix** - Streaming service
 - 📦 **Amazon** - E-commerce platform
 
+### Cloud Services
+- **EC2 Latency Test**: Monitors AWS EC2 endpoints across various regions.
+- **Azure Speed Test**: Monitors Azure storage endpoints across various regions.
+
 ## 🛠️ Installation
 
-### Prerequisites
+### Quick Installation (Recommended)
 
-- Python 3.8 or higher
-- pip (Python package installer)
+**One-line install** - Downloads, sets up, and runs the monitor automatically:
 
-### Setup Instructions
+```bash
+curl -fsSL https://raw.githubusercontent.com/craftybot-brr/website-status-monitor/main/quick-install.sh | bash
+```
 
-1. **Clone the repository**:
+Or with wget:
+```bash
+wget -qO- https://raw.githubusercontent.com/craftybot-brr/website-status-monitor/main/quick-install.sh | bash
+```
+
+This will:
+- Download the latest version
+- Set up Python virtual environment
+- Install all dependencies
+- Create management scripts (`start.sh`, `stop.sh`, `status.sh`)
+- Run the service in a screen session
+
+### Manual Installation
+
+1. **Download the installer**:
    ```bash
-   git clone https://github.com/yourusername/website-status-monitor.git
+   wget https://raw.githubusercontent.com/craftybot-brr/website-status-monitor/main/install.sh
+   chmod +x install.sh
+   ./install.sh
+   ```
+
+2. **Or clone the repository**:
+   ```bash
+   git clone https://github.com/craftybot-brr/website-status-monitor.git
    cd website-status-monitor
    ```
 
@@ -74,6 +102,50 @@ A real-time web application that monitors the status of major websites and servi
 
 6. **Access the dashboard**:
    Open your browser and navigate to `http://localhost`
+
+## API Endpoints
+
+- `/api/status`: Get the status of all monitored websites.
+- `/api/ec2/status`: Get the status of all monitored EC2 endpoints.
+- `/api/azure/status`: Get the status of all monitored Azure endpoints.
+
+## 🎮 Service Management
+
+After installation with the automated scripts, you can manage the service with:
+
+```bash
+# Start the service (runs in background screen session)
+./start.sh
+
+# Check service status
+./status.sh
+
+# Stop the service
+./stop.sh
+
+# View live logs (attach to screen session)
+screen -r status-monitor
+
+# Detach from screen session (leave it running)
+# Press: Ctrl+A, then D
+```
+
+### Access Points
+
+- **Main Dashboard**: http://localhost
+- **EC2 Monitor**: http://localhost/ec2
+- **Azure Monitor**: http://localhost/azure
+- **API Endpoints**: http://localhost/api/status
+
+### Environment Variables
+
+- `PORT`: Service port (default: 80)
+- `FLASK_DEBUG`: Debug mode (default: 0)
+
+Example:
+```bash
+PORT=8080 ./start.sh
+```
 
 ## 📡 API Endpoints
 
@@ -264,8 +336,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-If you have any questions or run into issues, please [open an issue](https://github.com/yourusername/website-status-monitor/issues) on GitHub.
+If you have any questions or run into issues, please [open an issue](https://github.com/craftybot-brr/website-status-monitor/issues) on GitHub.
 
 ---
 
-Made with ❤️ by [craftybot](https://github.com/yourusername) 
+Made with ❤️ by [craftybot](https://github.com/craftybot-brr)

@@ -46,7 +46,7 @@
 
         .header {
             text-align: center;
-            margin-bottom: 50px;
+            margin-bottom: 30px;
             color: white;
         }
 
@@ -67,6 +67,35 @@
             opacity: 0.8;
             font-weight: 300;
             letter-spacing: 0.02em;
+            margin-bottom: 20px;
+        }
+
+        .nav-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .nav-link {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 25px;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .nav-link:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .nav-link.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: transparent;
         }
 
         .page-tabs {
@@ -404,6 +433,11 @@
                 font-size: 2.5rem;
             }
             
+            .nav-links {
+                flex-direction: column;
+                align-items: center;
+            }
+            
             .status-grid {
                 grid-template-columns: 1fr;
             }
@@ -458,6 +492,13 @@
         <div class="header">
             <h1>🌐 Website Status Monitor</h1>
             <p>Real-time monitoring of popular websites and services</p>
+            
+            <div class="nav-links">
+                <a href="/" class="nav-link active">🌐 Website Monitor</a>
+                <a href="/ec2" class="nav-link">🖥️ EC2 Monitor</a>
+                <a href="/azure" class="nav-link">☁️ Azure Status</a>
+                <a href="/history" class="nav-link">📜 History</a>
+            </div>
         </div>
 
         <div id="loading" class="loading">
@@ -863,4 +904,4 @@
         });
     </script>
 </body>
-</html> 
+</html>
