@@ -1,12 +1,15 @@
 from flask import Flask, render_template, jsonify, request, make_response
 import requests
 import time
+import dns.resolver
 import threading
 from datetime import datetime
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import sqlite3
+from ping3 import ping
+import socket
 
 app = Flask(__name__)
 app.config.update(
@@ -180,9 +183,69 @@ PAGES = {
     },
 }
 
+# EC2 Endpoints for ICMP monitoring - AWS Regional Endpoints
+EC2_ENDPOINTS = {
+    "americas": {
+        "name": "Americas Regions",
+        "endpoints": [
+            {"name": "US East 1 (N. Virginia)", "ip": "ec2.us-east-1.amazonaws.com", "icon": "🇺🇸"},
+            {"name": "US East 2 (Ohio)", "ip": "ec2.us-east-2.amazonaws.com", "icon": "🇺🇸"},
+            {"name": "US West 1 (N. California)", "ip": "ec2.us-west-1.amazonaws.com", "icon": "🇺🇸"},
+            {"name": "US West 2 (Oregon)", "ip": "ec2.us-west-2.amazonaws.com", "icon": "🇺🇸"},
+            {"name": "Canada Central", "ip": "ec2.ca-central-1.amazonaws.com", "icon": "🇨🇦"},
+            {"name": "Canada West", "ip": "ec2.ca-west-1.amazonaws.com", "icon": "🇨🇦"},
+            {"name": "Mexico Central", "ip": "ec2.mx-central-1.amazonaws.com", "icon": "🇲🇽"},
+            {"name": "South America (São Paulo)", "ip": "ec2.sa-east-1.amazonaws.com", "icon": "🇧🇷"},
+        ],
+    },
+    "europe": {
+        "name": "Europe Regions",
+        "endpoints": [
+            {"name": "Europe West 1 (Ireland)", "ip": "ec2.eu-west-1.amazonaws.com", "icon": "🇮🇪"},
+            {"name": "Europe West 2 (London)", "ip": "ec2.eu-west-2.amazonaws.com", "icon": "🇬🇧"},
+            {"name": "Europe West 3 (Paris)", "ip": "ec2.eu-west-3.amazonaws.com", "icon": "🇫🇷"},
+            {"name": "Europe Central 1 (Frankfurt)", "ip": "ec2.eu-central-1.amazonaws.com", "icon": "🇩🇪"},
+            {"name": "Europe Central 2 (Zurich)", "ip": "ec2.eu-central-2.amazonaws.com", "icon": "🇨🇭"},
+            {"name": "Europe North 1 (Stockholm)", "ip": "ec2.eu-north-1.amazonaws.com", "icon": "🇸🇪"},
+            {"name": "Europe South 1 (Milan)", "ip": "ec2.eu-south-1.amazonaws.com", "icon": "🇮🇹"},
+            {"name": "Europe South 2 (Spain)", "ip": "ec2.eu-south-2.amazonaws.com", "icon": "🇪🇸"},
+        ],
+    },
+    "asia_pacific": {
+        "name": "Asia Pacific Regions",
+        "endpoints": [
+            {"name": "Asia Pacific Northeast 1 (Tokyo)", "ip": "ec2.ap-northeast-1.amazonaws.com", "icon": "🇯🇵"},
+            {"name": "Asia Pacific Northeast 2 (Seoul)", "ip": "ec2.ap-northeast-2.amazonaws.com", "icon": "🇰🇷"},
+            {"name": "Asia Pacific Northeast 3 (Osaka)", "ip": "ec2.ap-northeast-3.amazonaws.com", "icon": "🇯🇵"},
+            {"name": "Asia Pacific Southeast 1 (Singapore)", "ip": "ec2.ap-southeast-1.amazonaws.com", "icon": "🇸🇬"},
+            {"name": "Asia Pacific Southeast 2 (Sydney)", "ip": "ec2.ap-southeast-2.amazonaws.com", "icon": "🇦🇺"},
+            {"name": "Asia Pacific Southeast 3 (Jakarta)", "ip": "ec2.ap-southeast-3.amazonaws.com", "icon": "🇮🇩"},
+            {"name": "Asia Pacific Southeast 4 (Melbourne)", "ip": "ec2.ap-southeast-4.amazonaws.com", "icon": "🇦🇺"},
+            {"name": "Asia Pacific Southeast 5 (Malaysia)", "ip": "ec2.ap-southeast-5.amazonaws.com", "icon": "🇲🇾"},
+            {"name": "Asia Pacific Southeast 7 (Thailand)", "ip": "ec2.ap-southeast-7.amazonaws.com", "icon": "🇹🇭"},
+            {"name": "Asia Pacific South 1 (Mumbai)", "ip": "ec2.ap-south-1.amazonaws.com", "icon": "🇮🇳"},
+            {"name": "Asia Pacific South 2 (Hyderabad)", "ip": "ec2.ap-south-2.amazonaws.com", "icon": "🇮�"},
+            {"name": "Asia Pacific East 1 (Hong Kong)", "ip": "ec2.ap-east-1.amazonaws.com", "icon": "🇭🇰"},
+        ],
+    },
+    "middle_east_africa": {
+        "name": "Middle East & Africa",
+        "endpoints": [
+            {"name": "Middle East Central 1 (UAE)", "ip": "ec2.me-central-1.amazonaws.com", "icon": "🇦🇪"},
+            {"name": "Middle East South 1 (Bahrain)", "ip": "ec2.me-south-1.amazonaws.com", "icon": "🇧🇭"},
+            {"name": "Israel Central 1 (Tel Aviv)", "ip": "ec2.il-central-1.amazonaws.com", "icon": "🇮🇱"},
+            {"name": "Africa South 1 (Cape Town)", "ip": "ec2.af-south-1.amazonaws.com", "icon": "🇿�"},
+        ],
+    },
+}
+
 # Global variable to store status data with thread safety
 status_data_lock = threading.Lock()
 status_data = {}
+
+# Global variable to store EC2 status data
+ec2_status_data_lock = threading.Lock()
+ec2_status_data = {}
 
 def check_website_status(site):
     """Check the status of a single website"""
@@ -274,6 +337,103 @@ def check_website_status(site):
 
     return status
 
+def check_tcp_connectivity(endpoint):
+    """Check the status of an EC2 endpoint using TCP connectivity check"""
+    name = endpoint["name"]
+    hostname = endpoint["ip"]  # This is actually a hostname now
+    icon = endpoint["icon"]
+    
+    try:
+        start_time = time.time()
+        
+        # Use TCP connectivity check instead of ICMP ping (more reliable for cloud services)
+        # Most AWS services listen on port 443 (HTTPS)
+        test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        test_socket.settimeout(10)  # 10 second timeout
+        
+        try:
+            # Try to connect to port 443 (HTTPS) - most AWS services support this
+            result = test_socket.connect_ex((hostname, 443))
+            test_socket.close()
+            
+            total_time = int((time.time() - start_time) * 1000)  # Total time in ms
+            
+            status = {
+                "name": name,
+                "ip": hostname,  # Keep the hostname in the ip field for consistency
+                "icon": icon,
+                "response_time": total_time,
+                "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            
+            if result == 0:
+                # Successful connection
+                status["ping_time"] = total_time
+                status["connection_time"] = total_time
+                
+                # Determine status based on connection time
+                if total_time > 5000:  # 5 seconds
+                    status["status"] = "degraded"
+                    status["message"] = f"High latency ({total_time} ms)"
+                elif total_time > 2000:  # 2 seconds
+                    status["status"] = "degraded"
+                    status["message"] = f"Elevated latency ({total_time} ms)"
+                else:
+                    status["status"] = "operational"
+                    status["message"] = f"TCP connection OK ({total_time} ms)"
+            else:
+                # Connection failed
+                status["status"] = "down"
+                status["ping_time"] = None
+                status["connection_time"] = None
+                
+                # Try to determine why connection failed
+                try:
+                    socket.gethostbyname(hostname)
+                    status["message"] = f"TCP connection failed (port 443 blocked or service down)"
+                except socket.gaierror:
+                    status["message"] = "DNS resolution failed"
+                    
+        except socket.timeout:
+            status = {
+                "name": name,
+                "ip": hostname,
+                "icon": icon,
+                "status": "down",
+                "response_time": 10000,  # Timeout time
+                "ping_time": None,
+                "connection_time": None,
+                "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "message": "TCP connection timeout (10s)",
+            }
+        except Exception as e:
+            status = {
+                "name": name,
+                "ip": hostname,
+                "icon": icon,
+                "status": "down",
+                "response_time": None,
+                "ping_time": None,
+                "connection_time": None,
+                "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "message": f"TCP connection error: {str(e)[:30]}",
+            }
+            
+    except Exception as e:
+        status = {
+            "name": name,
+            "ip": hostname,
+            "icon": icon,
+            "status": "down",
+            "response_time": None,
+            "ping_time": None,
+            "connection_time": None,
+            "last_checked": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "message": f"Error: {str(e)[:50]}",
+        }
+    
+    return status
+
 def update_status_data():
     """Update status data for all websites across all pages using parallel processing."""
     global status_data
@@ -320,10 +480,61 @@ def update_status_data():
     print(f"   Status: {operational_count} operational, {degraded_count} degraded, {down_count} down")
     print(f"   Next update in 60 seconds\n")
 
+def update_ec2_status_data():
+    """Update status data for all EC2 endpoints using parallel processing."""
+    global ec2_status_data
+    start_time = time.time()
+    print(f"\n🔄 Updating EC2 status data... [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]")
+    
+    new_ec2_status_data = {}
+    tasks = {}
+    
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Submit all tasks
+        for env_name, env_data in EC2_ENDPOINTS.items():
+            env_display_name = env_data['name']
+            print(f"Checking {env_display_name}")
+            
+            for endpoint in env_data['endpoints']:
+                future = executor.submit(check_tcp_connectivity, endpoint)
+                tasks[future] = (env_name, env_display_name, endpoint['name'])
+        
+        # Collect results
+        for future in as_completed(tasks):
+            env_name, env_display_name, endpoint_name = tasks[future]
+            try:
+                status = future.result()
+                status['environment'] = env_name
+                status['environment_name'] = env_display_name
+                new_ec2_status_data[f"{env_name}_{endpoint_name}"] = status
+                print(f"  ✓ {endpoint_name}: {status['status']}")
+            except Exception as e:
+                print(f"  ✗ {endpoint_name}: Error - {str(e)}")
+
+    # Thread-safe update
+    with ec2_status_data_lock:
+        ec2_status_data = new_ec2_status_data
+    
+    update_duration = time.time() - start_time
+    total_endpoints = len(new_ec2_status_data)
+    operational_count = len([s for s in new_ec2_status_data.values() if s['status'] == 'operational'])
+    degraded_count = len([s for s in new_ec2_status_data.values() if s['status'] == 'degraded'])
+    down_count = len([s for s in new_ec2_status_data.values() if s['status'] == 'down'])
+    
+    print(f"📊 EC2 Update complete: {total_endpoints} endpoints checked in {update_duration:.2f}s")
+    print(f"   Status: {operational_count} operational, {degraded_count} degraded, {down_count} down")
+    print(f"   Next update in 60 seconds\n")
+
 def background_monitor():
     """Background thread that refreshes status data every 60 seconds."""
     while True:
         update_status_data()
+        time.sleep(60)
+
+def background_ec2_monitor():
+    """Background thread that refreshes EC2 status data every 60 seconds."""
+    while True:
+        update_ec2_status_data()
         time.sleep(60)
 
 @app.route("/")
@@ -477,20 +688,129 @@ def get_uptime(website_name):
         }
     )
 
+@app.route("/ec2")
+def ec2_monitor():
+    return render_template("ec2.html")
+
+@app.route("/api/ec2/status", methods=["GET"])
+def get_ec2_status():
+    """API endpoint to get current status of all EC2 endpoints or a specific environment"""
+    environment = request.args.get('env')
+    timestamp = request.args.get('_t')  # Cache-busting parameter
+    force_id = request.args.get('force')  # Force refresh parameter
+    
+    # Determine if this is a force refresh request
+    is_force_refresh = bool(force_id or request.args.get('bypass') or request.args.get('fresh'))
+    
+    if is_force_refresh:
+        print(f"🚀 FORCE REFRESH EC2 API Request: /api/ec2/status [{datetime.now().strftime('%H:%M:%S')}]")
+        print(f"   Force ID: {force_id}")
+        # Trigger immediate status update for force refresh
+        update_ec2_status_data()
+    else:
+        print(f"🌐 EC2 API Request: /api/ec2/status?env={environment}&_t={timestamp} [{datetime.now().strftime('%H:%M:%S')}]")
+    
+    with ec2_status_data_lock:
+        # Get cache status from request headers (set by Cloudflare)
+        cf_cache_status = request.headers.get('CF-Cache-Status', 'UNKNOWN')
+        cf_ray = request.headers.get('CF-RAY', 'UNKNOWN')
+        
+        # Common response data
+        current_timestamp = int(time.time())
+        last_update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        if environment and environment in EC2_ENDPOINTS:
+            # Return specific environment
+            env_endpoints = [status for key, status in ec2_status_data.items() if status.get('environment') == environment]
+            total_endpoints = len(env_endpoints)
+            operational_count = len([s for s in env_endpoints if s["status"] == "operational"])
+            degraded_count = len([s for s in env_endpoints if s["status"] == "degraded"])
+            down_count = len([s for s in env_endpoints if s["status"] == "down"])
+
+            response_data = {
+                "environment": environment,
+                "environment_name": EC2_ENDPOINTS[environment]["name"],
+                "endpoints": env_endpoints,
+                "last_update": last_update_time,
+                "total_endpoints": total_endpoints,
+                "operational_count": operational_count,
+                "degraded_count": degraded_count,
+                "down_count": down_count,
+                "timestamp": current_timestamp,
+                "cache_buster": timestamp,
+                "force_refresh": is_force_refresh,
+                "cf_cache_status": cf_cache_status,
+                "cf_ray": cf_ray,
+                "data_freshness": "real-time" if is_force_refresh else "cached"
+            }
+            print(f"   📄 Returning environment {environment} data: {total_endpoints} endpoints (CF: {cf_cache_status})")
+            return jsonify(response_data)
+        else:
+            # Return all endpoints
+            all_endpoints = list(ec2_status_data.values())
+            response_data = {
+                'endpoints': all_endpoints,
+                'environments': {env: data['name'] for env, data in EC2_ENDPOINTS.items()},
+                'last_update': last_update_time,
+                'total_endpoints': len(all_endpoints),
+                'operational_count': len([s for s in all_endpoints if s['status'] == 'operational']),
+                'degraded_count': len([s for s in all_endpoints if s['status'] == 'degraded']),
+                'down_count': len([s for s in all_endpoints if s['status'] == 'down']),
+                'timestamp': current_timestamp,
+                'cache_buster': timestamp,
+                'force_refresh': is_force_refresh,
+                'cf_cache_status': cf_cache_status,
+                'cf_ray': cf_ray,
+                'data_freshness': "real-time" if is_force_refresh else "cached"
+            }
+            print(f"   📄 Returning all EC2 data: {len(all_endpoints)} endpoints across {len(EC2_ENDPOINTS)} environments (CF: {cf_cache_status})")
+            return jsonify(response_data)
+
+@app.route("/api/ec2/environments")
+def get_ec2_environments():
+    """API endpoint to get all EC2 environments"""
+    timestamp = request.args.get('_t')  # Cache-busting parameter
+    print(f"🌐 EC2 API Request: /api/ec2/environments?_t={timestamp} [{datetime.now().strftime('%H:%M:%S')}]")
+    
+    response_data = {
+        "environments": {env: data["name"] for env, data in EC2_ENDPOINTS.items()},
+        "total_environments": len(EC2_ENDPOINTS),
+        "timestamp": int(time.time()),
+        "cache_buster": timestamp
+    }
+    print(f"   📄 Returning {len(EC2_ENDPOINTS)} environments")
+    return jsonify(response_data)
+
+@app.route("/api/ec2/endpoint/<endpoint_name>")
+def get_ec2_endpoint_status(endpoint_name):
+    """API endpoint to get status of a specific EC2 endpoint"""
+    with ec2_status_data_lock:
+        for status in ec2_status_data.values():
+            if status['name'].lower() == endpoint_name.lower():
+                return jsonify(status)
+    
+    return jsonify({'error': 'Endpoint not found'}), 404
+
 if __name__ == "__main__":
     print("Initializing website status monitor with pages system...")
     print(f"Total pages: {len(PAGES)}")
     print(f"Total websites: {sum(len(p['websites']) for p in PAGES.values())}")
+    print(f"Total EC2 environments: {len(EC2_ENDPOINTS)}")
+    print(f"Total EC2 endpoints: {sum(len(env['endpoints']) for env in EC2_ENDPOINTS.values())}")
 
     # Initialize database
     init_db()
 
-    # Initial status update
+    # Initial status updates
     update_status_data()
+    update_ec2_status_data()
 
-    # Start background monitor
+    # Start background monitors
     monitor_thread = threading.Thread(target=background_monitor, daemon=True)
     monitor_thread.start()
+
+    ec2_monitor_thread = threading.Thread(target=background_ec2_monitor, daemon=True)
+    ec2_monitor_thread.start()
 
     # Get configuration
     debug = os.getenv("FLASK_DEBUG", "0") == "1"
