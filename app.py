@@ -5,8 +5,10 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import json
+import os
 
 app = Flask(__name__)
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SECURE=True, SESSION_COOKIE_SAMESITE="Lax")
 
 # 4 Pages of 10 websites each, organized by category
 PAGES = {
@@ -81,20 +83,9 @@ def check_website_status(website):
     try:
         start_time = time.time()
         
-        # Use more realistic headers and longer timeout
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1',
-        }
-        
-        response = requests.get(
-            website['url'], 
+        response = session.get(
+            website['url'],
             timeout=15,  # Increased timeout
-            headers=headers,
             allow_redirects=True  # Allow redirects
         )
         response_time = round((time.time() - start_time) * 1000, 2)
@@ -269,13 +260,15 @@ if __name__ == '__main__':
     # Initialize status data
     print("Initializing website status monitor with pages system...")
     print(f"Total pages: {len(PAGES)}")
-    print(f"Total websites: {sum(len(page_data['websites']) for page_data in PAGES.values())}")
-    
+    print(
+        f"Total websites: {sum(len(page_data['websites']) for page_data in PAGES.values())}"
+    )
+
     update_status_data()
-    
+
     # Start background monitoring thread
     monitor_thread = threading.Thread(target=background_monitor, daemon=True)
     monitor_thread.start()
-    
-    print("Starting Flask application...")
-    app.run(debug=True, host='0.0.0.0', port=80)
+
+    debug = os.getenv('FLASK_DEBUG', '0') == '1'
+    port = int(os.getenv('PORT', '8080'))
