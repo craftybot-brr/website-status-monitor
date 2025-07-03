@@ -143,4 +143,23 @@ gecko-crash-helper-pipe.*
 MozillaUpdateLock-*
 com.apple.launchd.*/
 powerlog/
-tmp-mount-*/ 
+tmp-mount-*/
+
+# SSH Keys
+*.pub
+id_rsa*
+id_ed25519*
+id_dsa*
+id_ecdsa*
+*.pem
+*.key
+
+# Hash/Token/Key files (long hex strings)
+.*[A-F0-9]{40,}*
+*[A-F0-9]{64}*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+status_history.db
