@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify, request
 import requests
 import time
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import json
 
@@ -73,6 +74,7 @@ PAGES = {
 
 # Global variable to store status data
 status_data = {}
+status_data_lock = threading.Lock()
 
 def check_website_status(website):
     """Check the status of a single website with improved accuracy"""
@@ -171,22 +173,29 @@ def update_status_data():
     """Update status data for all websites across all pages"""
     global status_data
     print("Updating status data for all pages...")
-    
+
+    tasks = {}
     new_status_data = {}
-    
-    for page_num, page_data in PAGES.items():
-        page_name = page_data['name']
-        print(f"Checking Page {page_num}: {page_name}")
-        
-        for website in page_data['websites']:
-            status = check_website_status(website)
-            # Store with page info
+
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        for page_num, page_data in PAGES.items():
+            page_name = page_data['name']
+            print(f"Checking Page {page_num}: {page_name}")
+
+            for website in page_data['websites']:
+                future = executor.submit(check_website_status, website)
+                tasks[future] = (page_num, page_name, website['name'])
+
+        for future in as_completed(tasks):
+            page_num, page_name, _ = tasks[future]
+            status = future.result()
             status['page'] = page_num
             status['page_name'] = page_name
-            new_status_data[f"{page_num}_{website['name']}"] = status
-            print(f"  ✓ {website['name']}: {status['status']}")
-    
-    status_data = new_status_data
+            new_status_data[f"{page_num}_{status['name']}"] = status
+            print(f"  ✓ {status['name']}: {status['status']}")
+
+    with status_data_lock:
+        status_data = new_status_data
 
 def background_monitor():
     """Background thread to continuously monitor websites"""
@@ -203,10 +212,11 @@ def index():
 def get_status():
     """API endpoint to get current status of all websites"""
     page = request.args.get('page', type=int)
-    
+
     if page and page in PAGES:
         # Return specific page
-        page_websites = [status for key, status in status_data.items() if status.get('page') == page]
+        with status_data_lock:
+            page_websites = [status for status in status_data.values() if status.get('page') == page]
         total_websites = len(page_websites)
         operational_count = len([s for s in page_websites if s['status'] == 'operational'])
         degraded_count = len([s for s in page_websites if s['status'] == 'degraded'])
@@ -224,7 +234,8 @@ def get_status():
         })
     else:
         # Return all websites
-        all_websites = list(status_data.values())
+        with status_data_lock:
+            all_websites = list(status_data.values())
         return jsonify({
             'websites': all_websites,
             'pages': {num: data['name'] for num, data in PAGES.items()},
@@ -247,9 +258,10 @@ def get_pages():
 def get_website_status(website_name):
     """API endpoint to get status of a specific website"""
     # Find website across all pages
-    for key, status in status_data.items():
-        if status['name'].lower() == website_name.lower():
-            return jsonify(status)
+    with status_data_lock:
+        for status in status_data.values():
+            if status['name'].lower() == website_name.lower():
+                return jsonify(status)
     
     return jsonify({'error': 'Website not found'}), 404
 
