@@ -45,24 +45,29 @@ A real-time web application that monitors the status of major websites and servi
    cd website-status-monitor
    ```
 
-2. **Create a virtual environment**:
+2. **Run the setup script (Debian/Ubuntu)**:
+   ```bash
+   ./setup.sh
+   ```
+
+3. **Create a virtual environment manually** (optional):
    ```bash
    python3 -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-3. **Install dependencies**:
+4. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Run the application**:
+5. **Run the application**:
    ```bash
    python app.py
    ```
 
-5. **Access the dashboard**:
-   Open your browser and navigate to `http://localhost:8080`
+6. **Access the dashboard**:
+   Open your browser and navigate to `http://localhost`
 
 ## 📡 API Endpoints
 
@@ -168,7 +173,7 @@ For production use, consider using a WSGI server like Gunicorn:
 
 ```bash
 pip install gunicorn
-gunicorn -w 4 -b 0.0.0.0:8080 app:app
+gunicorn -w 4 -b 0.0.0.0:80 app:app
 ```
 
 ### Docker Deployment
@@ -181,7 +186,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
-EXPOSE 8080
+EXPOSE 80
 CMD ["python", "app.py"]
 ```
 
