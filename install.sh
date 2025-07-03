@@ -85,6 +85,10 @@ install_dependencies() {
 download_repo() {
     log_info "Downloading repository from $REPO_URL..."
     
+    # Save current directory and set target path
+    CURRENT_DIR=$(pwd)
+    TARGET_PATH="$CURRENT_DIR/$INSTALL_DIR"
+    
     # Create temporary directory
     TEMP_DIR=$(mktemp -d)
     cd "$TEMP_DIR"
@@ -96,14 +100,17 @@ download_repo() {
     unzip -q repo.zip
     
     # Move to target directory
-    if [[ -d "$INSTALL_DIR" ]]; then
-        log_warning "Directory $INSTALL_DIR already exists. Backing up to ${INSTALL_DIR}.backup..."
-        mv "$INSTALL_DIR" "${INSTALL_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
+    if [[ -d "$TARGET_PATH" ]]; then
+        log_warning "Directory $TARGET_PATH already exists. Backing up to ${TARGET_PATH}.backup..."
+        mv "$TARGET_PATH" "${TARGET_PATH}.backup.$(date +%Y%m%d_%H%M%S)"
     fi
     
     # The extracted directory is website-status-monitor-main
     if [[ -d "website-status-monitor-main" ]]; then
-        mv website-status-monitor-main "$INSTALL_DIR"
+        # Move the extracted directory to the target location
+        mv "website-status-monitor-main" "$TARGET_PATH"
+        # Update INSTALL_DIR to the absolute path for subsequent functions
+        INSTALL_DIR="$TARGET_PATH"
     else
         log_error "Extracted directory website-status-monitor-main not found!"
         exit 1
