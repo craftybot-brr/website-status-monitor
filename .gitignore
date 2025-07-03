@@ -153,3 +153,9 @@ id_dsa*
 id_ecdsa*
 *.pem
 *.key
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+status_history.db
