@@ -1,0 +1,5 @@
+Flask==3.0.0
+requests==2.31.0
+Werkzeug==3.0.1
+ping3==4.0.4
+nslookup==1.7.0 
