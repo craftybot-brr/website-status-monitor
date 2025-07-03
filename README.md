@@ -19,6 +19,8 @@ A real-time web application that monitors the status of major websites and servi
 - **Cloudflare Compatible**: Optimized to work with Cloudflare caching and CDN
 - **Cache-busting**: Advanced cache control for real-time data updates
 - **Force Refresh**: Manual cache bypass for immediate fresh data
+- **Historical Logging**: Stores every check in a SQLite database with history
+  and uptime stats
 
 ## 🚀 Monitored Services
 
@@ -102,6 +104,21 @@ GET /api/status/<website_name>
 Returns status information for a specific website.
 
 **Example**: `/api/status/Google`
+
+### Get Website History
+```
+GET /api/history/<website_name>
+```
+
+Returns recent status entries for a website. Use the `limit` query parameter to
+control how many records are returned (default `50`).
+
+### Get Website Uptime
+```
+GET /api/uptime/<website_name>
+```
+
+Returns uptime statistics for a website based on stored history.
 
 ## 🏗️ Project Structure
 
