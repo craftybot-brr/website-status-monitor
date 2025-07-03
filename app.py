@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import sqlite3
 
 app = Flask(__name__)
 app.config.update(
@@ -13,6 +14,48 @@ app.config.update(
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_SAMESITE="Lax",
 )
+
+# Database setup
+DB_PATH = os.path.join(os.path.dirname(__file__), "status_history.db")
+
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            url TEXT,
+            status TEXT,
+            status_code TEXT,
+            response_time INTEGER,
+            checked_at TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+def store_status(status: dict):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        """
+        INSERT INTO history (name, url, status, status_code, response_time, checked_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            status.get("name"),
+            status.get("url"),
+            status.get("status"),
+            str(status.get("status_code")),
+            status.get("response_time"),
+            status.get("last_checked"),
+        ),
+    )
+    conn.commit()
+    conn.close()
 
 # Add cache control headers to prevent API response caching
 def add_cache_headers(response):
@@ -258,6 +301,7 @@ def update_status_data():
                 status['page'] = page_num
                 status['page_name'] = page_name
                 new_status_data[f"{page_num}_{website_name}"] = status
+                store_status(status)
                 print(f"  ✓ {website_name}: {status['status']}")
             except Exception as e:
                 print(f"  ✗ {website_name}: Error - {str(e)}")
@@ -385,10 +429,61 @@ def get_website_status(website_name):
     
     return jsonify({'error': 'Website not found'}), 404
 
+
+@app.route("/api/history/<website_name>")
+def get_history(website_name):
+    """Return recent status history for a website"""
+    limit = request.args.get('limit', 50, type=int)
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT status, status_code, response_time, checked_at FROM history WHERE name=? ORDER BY id DESC LIMIT ?",
+        (website_name, limit),
+    )
+    rows = c.fetchall()
+    conn.close()
+    history = [
+        {
+            "status": r[0],
+            "status_code": r[1],
+            "response_time": r[2],
+            "checked_at": r[3],
+        }
+        for r in rows
+    ]
+    return jsonify({"name": website_name, "history": history, "count": len(history)})
+
+
+@app.route("/api/uptime/<website_name>")
+def get_uptime(website_name):
+    """Return uptime percentage for a website"""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM history WHERE name=?", (website_name,))
+    total = c.fetchone()[0]
+    c.execute(
+        "SELECT COUNT(*) FROM history WHERE name=? AND status='operational'",
+        (website_name,),
+    )
+    operational = c.fetchone()[0]
+    conn.close()
+    uptime = round((operational / total * 100), 2) if total else None
+    return jsonify(
+        {
+            "name": website_name,
+            "total_checks": total,
+            "operational_checks": operational,
+            "uptime_percentage": uptime,
+        }
+    )
+
 if __name__ == "__main__":
     print("Initializing website status monitor with pages system...")
     print(f"Total pages: {len(PAGES)}")
     print(f"Total websites: {sum(len(p['websites']) for p in PAGES.values())}")
+
+    # Initialize database
+    init_db()
 
     # Initial status update
     update_status_data()
