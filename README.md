@@ -8,12 +8,13 @@ A real-time web application that monitors the status of major websites and servi
 
 ## ✨ Features
 
-- **Real-time Monitoring**: Continuously monitors 10 major websites every 30 seconds
+- **Real-time Monitoring**: Continuously monitors 40 major websites every 60 seconds
+- **Parallel Checks**: Uses a thread pool for concurrent status updates
 - **Beautiful Dashboard**: Modern, responsive UI with gradient backgrounds and animated cards
 - **Status Categories**: Categorizes websites as Operational, Degraded, or Down
 - **Response Time Tracking**: Measures and displays response times for each service
 - **RESTful API**: JSON endpoints for programmatic access to status data
-- **Auto-refresh**: Dashboard automatically updates every 30 seconds
+- **Auto-refresh**: Dashboard automatically updates every 60 seconds
 - **Mobile Responsive**: Works perfectly on desktop, tablet, and mobile devices
 
 ## 🚀 Monitored Services
@@ -77,7 +78,7 @@ Returns comprehensive status information for all monitored websites.
 {
   "websites": [...],
   "last_update": "2025-07-02 19:33:59",
-  "total_websites": 10,
+  "total_websites": 40,
   "operational_count": 9,
   "degraded_count": 1,
   "down_count": 0
@@ -107,31 +108,37 @@ website-status-monitor/
 
 ## 🔧 Configuration
 
-The application can be configured by modifying the `WEBSITES` list in `app.py`:
+The application can be configured by modifying the `PAGES` dictionary in `app.py`:
 
 ```python
-WEBSITES = [
-    {
-        'name': 'Your Website',
-        'url': 'https://your-website.com',
-        'icon': '🌟'
+PAGES = {
+    1: {
+        'name': 'My Page',
+        'websites': [
+            {
+                'name': 'Your Website',
+                'url': 'https://your-website.com',
+                'icon': '🌟'
+            },
+            # Add more websites here...
+        ]
     },
-    # Add more websites here...
-]
+    # Add more pages here...
+}
 ```
 
 ## 🎨 Customization
 
 ### Adding New Websites
 
-To monitor additional websites, add them to the `WEBSITES` list in `app.py`:
+To monitor additional websites, add them under a page inside the `PAGES` dictionary:
 
 ```python
-{
+PAGES[1]['websites'].append({
     'name': 'New Service',
     'url': 'https://new-service.com',
     'icon': '🆕'
-}
+})
 ```
 
 ### Changing Update Intervals
@@ -139,7 +146,7 @@ To monitor additional websites, add them to the `WEBSITES` list in `app.py`:
 Modify the sleep time in the `background_monitor()` function:
 
 ```python
-time.sleep(30)  # Update every 30 seconds
+time.sleep(60)  # Update every 60 seconds
 ```
 
 ### Customizing Status Thresholds
