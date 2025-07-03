@@ -12,3 +12,4 @@ pip install --upgrade pip
 pip install -r requirements.txt
 
 echo "Setup complete. Activate the virtual environment with 'source venv/bin/activate' and run 'python app.py' to start the server."
+echo "The monitor includes both website status checking (/) and AWS EC2 regional endpoint monitoring (/ec2)."

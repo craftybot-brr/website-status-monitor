@@ -43,3 +43,4 @@ echo
 echo "🎉  Setup complete."
 echo "   Activate with:  source venv/bin/activate"
 echo "   Run server:     python app.py"
+echo "   Features:       Website monitoring (/) + AWS EC2 endpoint monitoring (/ec2)"
