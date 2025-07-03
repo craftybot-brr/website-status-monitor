@@ -37,16 +37,38 @@ A real-time web application that monitors the status of major websites and servi
 
 ## 🛠️ Installation
 
-### Prerequisites
+### Quick Installation (Recommended)
 
-- Python 3.8 or higher
-- pip (Python package installer)
+**One-line install** - Downloads, sets up, and runs the monitor automatically:
 
-### Setup Instructions
+```bash
+curl -fsSL https://raw.githubusercontent.com/craftybot-brr/website-status-monitor/main/quick-install.sh | bash
+```
 
-1. **Clone the repository**:
+Or with wget:
+```bash
+wget -qO- https://raw.githubusercontent.com/craftybot-brr/website-status-monitor/main/quick-install.sh | bash
+```
+
+This will:
+- Download the latest version
+- Set up Python virtual environment
+- Install all dependencies
+- Create management scripts (`start.sh`, `stop.sh`, `status.sh`)
+- Run the service in a screen session
+
+### Manual Installation
+
+1. **Download the installer**:
    ```bash
-   git clone https://github.com/yourusername/website-status-monitor.git
+   wget https://raw.githubusercontent.com/craftybot-brr/website-status-monitor/main/install.sh
+   chmod +x install.sh
+   ./install.sh
+   ```
+
+2. **Or clone the repository**:
+   ```bash
+   git clone https://github.com/craftybot-brr/website-status-monitor.git
    cd website-status-monitor
    ```
 
@@ -74,6 +96,43 @@ A real-time web application that monitors the status of major websites and servi
 
 6. **Access the dashboard**:
    Open your browser and navigate to `http://localhost`
+
+## 🎮 Service Management
+
+After installation with the automated scripts, you can manage the service with:
+
+```bash
+# Start the service (runs in background screen session)
+./start.sh
+
+# Check service status
+./status.sh
+
+# Stop the service
+./stop.sh
+
+# View live logs (attach to screen session)
+screen -r status-monitor
+
+# Detach from screen session (leave it running)
+# Press: Ctrl+A, then D
+```
+
+### Access Points
+
+- **Main Dashboard**: http://localhost
+- **EC2 Monitor**: http://localhost/ec2
+- **API Endpoints**: http://localhost/api/status
+
+### Environment Variables
+
+- `PORT`: Service port (default: 80)
+- `FLASK_DEBUG`: Debug mode (default: 0)
+
+Example:
+```bash
+PORT=8080 ./start.sh
+```
 
 ## 📡 API Endpoints
 
