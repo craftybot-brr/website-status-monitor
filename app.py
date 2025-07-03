@@ -2,13 +2,10 @@ from flask import Flask, render_template, jsonify, request
 import requests
 import time
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import json
-import os
 
 app = Flask(__name__)
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SECURE=True, SESSION_COOKIE_SAMESITE="Lax")
 
 # 4 Pages of 10 websites each, organized by category
 PAGES = {
@@ -76,31 +73,26 @@ PAGES = {
 
 # Global variable to store status data
 status_data = {}
-status_data_lock = threading.Lock()
-
-DEFAULT_HEADERS = {
-    'User-Agent': (
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    ),
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-}
-
-session = requests.Session()
-session.headers.update(DEFAULT_HEADERS)
 
 def check_website_status(website):
     """Check the status of a single website with improved accuracy"""
     try:
         start_time = time.time()
         
-        response = session.get(
-            website['url'],
+        # Use more realistic headers and longer timeout
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
+        response = requests.get(
+            website['url'], 
             timeout=15,  # Increased timeout
+            headers=headers,
             allow_redirects=True  # Allow redirects
         )
         response_time = round((time.time() - start_time) * 1000, 2)
@@ -179,29 +171,22 @@ def update_status_data():
     """Update status data for all websites across all pages"""
     global status_data
     print("Updating status data for all pages...")
-
-    tasks = {}
+    
     new_status_data = {}
-
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        for page_num, page_data in PAGES.items():
-            page_name = page_data['name']
-            print(f"Checking Page {page_num}: {page_name}")
-
-            for website in page_data['websites']:
-                future = executor.submit(check_website_status, website)
-                tasks[future] = (page_num, page_name, website['name'])
-
-        for future in as_completed(tasks):
-            page_num, page_name, _ = tasks[future]
-            status = future.result()
+    
+    for page_num, page_data in PAGES.items():
+        page_name = page_data['name']
+        print(f"Checking Page {page_num}: {page_name}")
+        
+        for website in page_data['websites']:
+            status = check_website_status(website)
+            # Store with page info
             status['page'] = page_num
             status['page_name'] = page_name
-            new_status_data[f"{page_num}_{status['name']}"] = status
-            print(f"  ✓ {status['name']}: {status['status']}")
-
-    with status_data_lock:
-        status_data = new_status_data
+            new_status_data[f"{page_num}_{website['name']}"] = status
+            print(f"  ✓ {website['name']}: {status['status']}")
+    
+    status_data = new_status_data
 
 def background_monitor():
     """Background thread to continuously monitor websites"""
@@ -218,11 +203,10 @@ def index():
 def get_status():
     """API endpoint to get current status of all websites"""
     page = request.args.get('page', type=int)
-
+    
     if page and page in PAGES:
         # Return specific page
-        with status_data_lock:
-            page_websites = [status for status in status_data.values() if status.get('page') == page]
+        page_websites = [status for key, status in status_data.items() if status.get('page') == page]
         total_websites = len(page_websites)
         operational_count = len([s for s in page_websites if s['status'] == 'operational'])
         degraded_count = len([s for s in page_websites if s['status'] == 'degraded'])
@@ -240,8 +224,7 @@ def get_status():
         })
     else:
         # Return all websites
-        with status_data_lock:
-            all_websites = list(status_data.values())
+        all_websites = list(status_data.values())
         return jsonify({
             'websites': all_websites,
             'pages': {num: data['name'] for num, data in PAGES.items()},
@@ -264,10 +247,9 @@ def get_pages():
 def get_website_status(website_name):
     """API endpoint to get status of a specific website"""
     # Find website across all pages
-    with status_data_lock:
-        for status in status_data.values():
-            if status['name'].lower() == website_name.lower():
-                return jsonify(status)
+    for key, status in status_data.items():
+        if status['name'].lower() == website_name.lower():
+            return jsonify(status)
     
     return jsonify({'error': 'Website not found'}), 404
 
@@ -275,18 +257,13 @@ if __name__ == '__main__':
     # Initialize status data
     print("Initializing website status monitor with pages system...")
     print(f"Total pages: {len(PAGES)}")
-    print(
-        f"Total websites: {sum(len(page_data['websites']) for page_data in PAGES.values())}"
-    )
-
+    print(f"Total websites: {sum(len(page_data['websites']) for page_data in PAGES.values())}")
+    
     update_status_data()
-
+    
     # Start background monitoring thread
     monitor_thread = threading.Thread(target=background_monitor, daemon=True)
     monitor_thread.start()
-
-    debug = os.getenv('FLASK_DEBUG', '0') == '1'
-    port = int(os.getenv('PORT', '8080'))
-
+    
     print("Starting Flask application...")
-    app.run(debug=debug, host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=80)
