@@ -96,12 +96,18 @@ This will:
 
 5. **Run the application**:
    ```bash
-   # Optional: set PORT and FLASK_DEBUG before running
-   PORT=8080 FLASK_DEBUG=0 python app.py
+   # For port 80 (requires sudo on macOS/Linux):
+   sudo python3 app.py
+   
+   # Alternative: Run on port 8080 (no sudo required):
+   # Edit app.py and change port=80 to port=8080, then:
+   # python3 app.py
    ```
 
 6. **Access the dashboard**:
-   Open your browser and navigate to `http://localhost`
+   Open your browser and navigate to:
+   - `http://localhost` (if running on port 80)
+   - `http://localhost:8080` (if running on port 8080)
 
 ## API Endpoints
 
