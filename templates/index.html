@@ -498,30 +498,92 @@
 
         async function fetchStatus(page = null) {
             try {
-                const url = page ? `/api/status?page=${page}` : '/api/status';
-                const response = await fetch(url);
+                // Add multiple cache-busting parameters to prevent all levels of caching
+                const timestamp = Date.now();
+                const random = Math.random().toString(36).substring(7);
+                const url = page ? 
+                    `/api/status?page=${page}&_t=${timestamp}&_r=${random}&_cb=${Date.now()}` : 
+                    `/api/status?_t=${timestamp}&_r=${random}&_cb=${Date.now()}`;
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+                        'Pragma': 'no-cache',
+                        'Expires': '0',
+                        // Cloudflare-specific headers
+                        'CF-Cache-Status': 'BYPASS',
+                        'CDN-Cache-Control': 'no-cache',
+                        // Force fresh data
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-Cache-Bypass': 'true',
+                        'X-Real-Time': 'true'
+                    }
+                });
+                
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                statusData = await response.json();
+                
+                const data = await response.json();
+                
+                // Verify data freshness (should be within last 2 minutes)
+                if (data.timestamp) {
+                    const dataAge = Date.now() / 1000 - data.timestamp;
+                    if (dataAge > 120) { // More than 2 minutes old
+                        console.warn(`Data seems stale (${dataAge.toFixed(0)}s old), retrying...`);
+                        throw new Error('Stale data detected');
+                    }
+                }
+                
+                statusData = data;
                 updateDisplay();
+                
+                // Clear any error messages
+                clearError();
+                
+                console.log(`✅ Fresh data received (${data.total_websites} websites, ${data.timestamp ? Math.floor(Date.now()/1000 - data.timestamp) : 'unknown'}s old)`);
+                
             } catch (error) {
                 console.error('Error fetching status:', error);
                 showError('Failed to fetch status data. Retrying...');
+                // Retry after 5 seconds with exponential backoff
+                setTimeout(() => fetchStatus(page), 5000);
             }
         }
 
         async function fetchPages() {
             try {
-                const response = await fetch('/api/pages');
+                const timestamp = Date.now();
+                const random = Math.random().toString(36).substring(7);
+                const response = await fetch(`/api/pages?_t=${timestamp}&_r=${random}&_cb=${Date.now()}`, {
+                    method: 'GET',
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+                        'Pragma': 'no-cache',
+                        'Expires': '0',
+                        // Cloudflare-specific headers
+                        'CF-Cache-Status': 'BYPASS',
+                        'CDN-Cache-Control': 'no-cache',
+                        // Force fresh data
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-Cache-Bypass': 'true'
+                    }
+                });
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 const data = await response.json();
                 pages = data.pages;
                 updatePageTabs();
+                
+                console.log(`✅ Pages data received (${Object.keys(data.pages).length} pages)`);
+                
             } catch (error) {
                 console.error('Error fetching pages:', error);
+                showError('Failed to fetch page data. Retrying...');
+                // Retry after 3 seconds
+                setTimeout(() => fetchPages(), 3000);
             }
         }
 
@@ -646,7 +708,16 @@
 
         function updateLastUpdateTime() {
             const timeElement = document.getElementById('last-update-time');
-            timeElement.textContent = `Last updated: ${statusData.last_update}`;
+            const cfStatus = statusData.cf_cache_status || 'Unknown';
+            const dataAge = statusData.timestamp ? Math.floor(Date.now()/1000 - statusData.timestamp) : 'unknown';
+            
+            timeElement.innerHTML = `
+                Last updated: ${statusData.last_update}<br>
+                <small style="opacity: 0.7;">
+                    CF Cache: ${cfStatus} | Data age: ${dataAge}s | 
+                    <span onclick="forceRefresh()" style="cursor: pointer; text-decoration: underline; color: #667eea;">Force Refresh</span>
+                </small>
+            `;
         }
 
         function showError(message) {
@@ -656,6 +727,14 @@
                     <p>⚠️ ${message}</p>
                 </div>
             `;
+            loading.style.display = 'block';
+        }
+
+        function clearError() {
+            const loading = document.getElementById('loading');
+            if (loading.style.display !== 'none') {
+                loading.style.display = 'none';
+            }
         }
 
         function startAutoRefresh() {
@@ -666,15 +745,101 @@
             
             // Set up auto-refresh every 60 seconds
             updateInterval = setInterval(() => {
+                console.log('Auto-refreshing data...', new Date().toISOString());
                 fetchStatus(currentPage);
             }, 60000);
+            
+            console.log('Auto-refresh started - updating every 60 seconds');
+        }
+
+        // Force refresh function that bypasses all caches
+        async function forceRefresh() {
+            console.log('🔄 Force refresh initiated - bypassing all caches...');
+            
+            // Show loading state
+            showError('Force refreshing data - bypassing all caches...');
+            
+            try {
+                // Use a unique identifier to ensure completely fresh data
+                const forceId = `force_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+                const url = currentPage ? 
+                    `/api/status?page=${currentPage}&force=${forceId}&bypass=all&fresh=true` : 
+                    `/api/status?force=${forceId}&bypass=all&fresh=true`;
+                
+                const response = await fetch(url, {
+                    method: 'GET',
+                    cache: 'no-store', // Browser-level cache bypass
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0, private',
+                        'Pragma': 'no-cache',
+                        'Expires': '-1',
+                        // Cloudflare-specific bypass headers
+                        'CF-Cache-Status': 'BYPASS',
+                        'CF-Cache-Tag': 'purge',
+                        'CDN-Cache-Control': 'no-cache, no-store',
+                        'Edge-Cache-TTL': '0',
+                        // Additional force headers
+                        'X-Force-Refresh': 'true',
+                        'X-Cache-Bypass': 'all',
+                        'X-Cloudflare-Bypass': 'true',
+                        'X-Real-Time': forceId,
+                        'Vary': '*'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                statusData = data;
+                updateDisplay();
+                clearError();
+                
+                // Show cache status information
+                const cfCacheStatus = response.headers.get('CF-Cache-Status') || 'Unknown';
+                const cacheControl = response.headers.get('Cache-Control') || 'Unknown';
+                
+                console.log(`✅ Force refresh complete!`);
+                console.log(`   CF-Cache-Status: ${cfCacheStatus}`);
+                console.log(`   Cache-Control: ${cacheControl}`);
+                console.log(`   Data age: ${data.timestamp ? Math.floor(Date.now()/1000 - data.timestamp) : 'unknown'}s`);
+                
+                // Show success message briefly
+                const tempMessage = document.createElement('div');
+                tempMessage.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: rgba(16, 185, 129, 0.9);
+                    color: white;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    z-index: 10000;
+                    font-weight: 500;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                `;
+                tempMessage.textContent = `✅ Force refresh complete! CF Status: ${cfCacheStatus}`;
+                document.body.appendChild(tempMessage);
+                
+                setTimeout(() => {
+                    document.body.removeChild(tempMessage);
+                }, 3000);
+                
+            } catch (error) {
+                console.error('Force refresh failed:', error);
+                showError('Force refresh failed. Falling back to normal refresh...');
+                setTimeout(() => fetchStatus(currentPage), 2000);
+            }
         }
 
         // Initialize the dashboard
         async function init() {
+            console.log('Initializing dashboard...', new Date().toISOString());
             await fetchPages();
             await fetchStatus();
             startAutoRefresh();
+            console.log('Dashboard initialized successfully');
         }
 
         // Start the application
@@ -683,6 +848,16 @@
         // Refresh when page becomes visible again
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
+                console.log('Page became visible, refreshing data...', new Date().toISOString());
+                fetchStatus(currentPage);
+            }
+        });
+
+        // Add manual refresh on click for debugging
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+                e.preventDefault();
+                console.log('Manual refresh triggered...', new Date().toISOString());
                 fetchStatus(currentPage);
             }
         });

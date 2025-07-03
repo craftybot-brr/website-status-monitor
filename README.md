@@ -16,6 +16,9 @@ A real-time web application that monitors the status of major websites and servi
 - **RESTful API**: JSON endpoints for programmatic access to status data
 - **Auto-refresh**: Dashboard automatically updates every 60 seconds
 - **Mobile Responsive**: Works perfectly on desktop, tablet, and mobile devices
+- **Cloudflare Compatible**: Optimized to work with Cloudflare caching and CDN
+- **Cache-busting**: Advanced cache control for real-time data updates
+- **Force Refresh**: Manual cache bypass for immediate fresh data
 
 ## 🚀 Monitored Services
 
@@ -195,6 +198,34 @@ COPY . .
 EXPOSE 80
 CMD ["python", "app.py"]
 ```
+
+### Cloudflare Deployment
+
+This application is optimized for Cloudflare. For optimal performance:
+
+1. **Configure Page Rules** (see `CLOUDFLARE_CONFIG.md` for details):
+   - `/api/*` → Cache Level: Bypass
+   - `/*.js`, `/*.css` → Cache Level: Standard (1 hour)
+   - `/` → Cache Level: Standard (30 seconds)
+
+2. **Monitor Cache Status**:
+   - Check developer tools for `CF-Cache-Status: BYPASS` on API calls
+   - Use the "Force Refresh" link in the web UI to bypass all caches
+   - Data age is displayed at the bottom of the page
+
+3. **Troubleshooting**:
+   - If data seems stale, click "Force Refresh"
+   - Check Cloudflare Page Rules configuration
+   - Verify API endpoints return `CF-Cache-Status: BYPASS`
+
+**Quick Cloudflare Setup:**
+```bash
+# Check if API caching is properly bypassed
+curl -I https://yourdomain.com/api/status
+# Should show: CF-Cache-Status: BYPASS
+```
+
+For detailed Cloudflare configuration, see [`CLOUDFLARE_CONFIG.md`](CLOUDFLARE_CONFIG.md).
 
 ## 🤝 Contributing
 

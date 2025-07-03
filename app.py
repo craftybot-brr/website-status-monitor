@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, make_response
 import requests
 import time
 import threading
@@ -13,6 +13,65 @@ app.config.update(
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_SAMESITE="Lax",
 )
+
+# Add cache control headers to prevent API response caching
+def add_cache_headers(response):
+    """Add headers to prevent caching of API responses for both browsers and Cloudflare"""
+    # Browser cache control
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    response.headers['Last-Modified'] = datetime.now().strftime('%a, %d %b %Y %H:%M:%S GMT')
+    response.headers['ETag'] = str(int(time.time()))
+    
+    # Cloudflare-specific headers to prevent edge caching
+    response.headers['CF-Cache-Status'] = 'BYPASS'
+    response.headers['Edge-Cache-TTL'] = '0'
+    response.headers['CDN-Cache-Control'] = 'no-cache'
+    
+    # Ensure real-time data
+    response.headers['Vary'] = 'Accept, Accept-Encoding, User-Agent'
+    
+    return response
+
+def add_static_cache_headers(response):
+    """Add cache headers for static content that should be cached by Cloudflare"""
+    # Cache static assets for 1 hour at edge, 1 day in browser
+    response.headers['Cache-Control'] = 'public, max-age=86400'  # 24 hours browser cache
+    response.headers['Edge-Cache-TTL'] = '3600'  # 1 hour Cloudflare cache
+    response.headers['CDN-Cache-Control'] = 'public, max-age=3600'
+    
+    return response
+
+def add_html_cache_headers(response):
+    """Add cache headers for HTML content with short cache time"""
+    # Short cache for HTML to allow updates but improve performance
+    response.headers['Cache-Control'] = 'public, max-age=60'  # 1 minute browser cache
+    response.headers['Edge-Cache-TTL'] = '30'  # 30 seconds Cloudflare cache
+    response.headers['CDN-Cache-Control'] = 'public, max-age=30'
+    
+    return response
+
+@app.after_request
+def after_request(response):
+    """Add appropriate cache control headers based on content type"""
+    # API endpoints - no caching
+    if request.path.startswith('/api/'):
+        response = add_cache_headers(response)
+    # Static assets - long cache
+    elif request.path.endswith(('.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.woff', '.woff2', '.ttf')):
+        response = add_static_cache_headers(response)
+    # HTML pages - short cache
+    elif request.path.endswith('.html') or request.path == '/':
+        response = add_html_cache_headers(response)
+    
+    # Add CORS headers for API requests
+    if request.path.startswith('/api/'):
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Cache-Control, Pragma'
+    
+    return response
 
 # 4 Pages of 10 websites each, organized by category
 PAGES = {
@@ -175,7 +234,8 @@ def check_website_status(site):
 def update_status_data():
     """Update status data for all websites across all pages using parallel processing."""
     global status_data
-    print("Updating status data for all pages...")
+    start_time = time.time()
+    print(f"\n🔄 Updating status data for all pages... [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]")
     
     new_status_data = {}
     tasks = {}
@@ -205,6 +265,16 @@ def update_status_data():
     # Thread-safe update
     with status_data_lock:
         status_data = new_status_data
+    
+    update_duration = time.time() - start_time
+    total_sites = len(new_status_data)
+    operational_count = len([s for s in new_status_data.values() if s['status'] == 'operational'])
+    degraded_count = len([s for s in new_status_data.values() if s['status'] == 'degraded'])
+    down_count = len([s for s in new_status_data.values() if s['status'] == 'down'])
+    
+    print(f"📊 Update complete: {total_sites} sites checked in {update_duration:.2f}s")
+    print(f"   Status: {operational_count} operational, {degraded_count} degraded, {down_count} down")
+    print(f"   Next update in 60 seconds\n")
 
 def background_monitor():
     """Background thread that refreshes status data every 60 seconds."""
@@ -220,8 +290,29 @@ def index():
 def get_status():
     """API endpoint to get current status of all websites or a specific page"""
     page = request.args.get('page', type=int)
+    timestamp = request.args.get('_t')  # Cache-busting parameter
+    force_id = request.args.get('force')  # Force refresh parameter
+    
+    # Determine if this is a force refresh request
+    is_force_refresh = bool(force_id or request.args.get('bypass') or request.args.get('fresh'))
+    
+    if is_force_refresh:
+        print(f"🚀 FORCE REFRESH API Request: /api/status [{datetime.now().strftime('%H:%M:%S')}]")
+        print(f"   Force ID: {force_id}")
+        # Trigger immediate status update for force refresh
+        update_status_data()
+    else:
+        print(f"🌐 API Request: /api/status?page={page}&_t={timestamp} [{datetime.now().strftime('%H:%M:%S')}]")
     
     with status_data_lock:
+        # Get cache status from request headers (set by Cloudflare)
+        cf_cache_status = request.headers.get('CF-Cache-Status', 'UNKNOWN')
+        cf_ray = request.headers.get('CF-RAY', 'UNKNOWN')
+        
+        # Common response data
+        current_timestamp = int(time.time())
+        last_update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
         if page and page in PAGES:
             # Return specific page
             page_websites = [status for key, status in status_data.items() if status.get('page') == page]
@@ -230,36 +321,59 @@ def get_status():
             degraded_count = len([s for s in page_websites if s["status"] == "degraded"])
             down_count = len([s for s in page_websites if s["status"] == "down"])
 
-            return jsonify({
+            response_data = {
                 "page": page,
                 "page_name": PAGES[page]["name"],
                 "websites": page_websites,
-                "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "last_update": last_update_time,
                 "total_websites": total_websites,
                 "operational_count": operational_count,
                 "degraded_count": degraded_count,
                 "down_count": down_count,
-            })
+                "timestamp": current_timestamp,
+                "cache_buster": timestamp,
+                "force_refresh": is_force_refresh,
+                "cf_cache_status": cf_cache_status,
+                "cf_ray": cf_ray,
+                "data_freshness": "real-time" if is_force_refresh else "cached"
+            }
+            print(f"   📄 Returning page {page} data: {total_websites} websites (CF: {cf_cache_status})")
+            return jsonify(response_data)
         else:
             # Return all websites
             all_websites = list(status_data.values())
-            return jsonify({
+            response_data = {
                 'websites': all_websites,
                 'pages': {num: data['name'] for num, data in PAGES.items()},
-                'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'last_update': last_update_time,
                 'total_websites': len(all_websites),
                 'operational_count': len([s for s in all_websites if s['status'] == 'operational']),
                 'degraded_count': len([s for s in all_websites if s['status'] == 'degraded']),
-                'down_count': len([s for s in all_websites if s['status'] == 'down'])
-            })
+                'down_count': len([s for s in all_websites if s['status'] == 'down']),
+                'timestamp': current_timestamp,
+                'cache_buster': timestamp,
+                'force_refresh': is_force_refresh,
+                'cf_cache_status': cf_cache_status,
+                'cf_ray': cf_ray,
+                'data_freshness': "real-time" if is_force_refresh else "cached"
+            }
+            print(f"   📄 Returning all data: {len(all_websites)} websites across {len(PAGES)} pages (CF: {cf_cache_status})")
+            return jsonify(response_data)
 
 @app.route("/api/pages")
 def get_pages():
     """API endpoint to get all pages"""
-    return jsonify({
+    timestamp = request.args.get('_t')  # Cache-busting parameter
+    print(f"🌐 API Request: /api/pages?_t={timestamp} [{datetime.now().strftime('%H:%M:%S')}]")
+    
+    response_data = {
         "pages": {num: data["name"] for num, data in PAGES.items()},
         "total_pages": len(PAGES),
-    })
+        "timestamp": int(time.time()),
+        "cache_buster": timestamp
+    }
+    print(f"   📄 Returning {len(PAGES)} pages")
+    return jsonify(response_data)
 
 @app.route("/api/status/<website_name>")
 def get_website_status(website_name):
