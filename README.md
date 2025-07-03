@@ -323,8 +323,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-If you have any questions or run into issues, please [open an issue](https://github.com/yourusername/website-status-monitor/issues) on GitHub.
+If you have any questions or run into issues, please [open an issue](https://github.com/craftybot-brr/website-status-monitor/issues) on GitHub.
 
 ---
 
-Made with ❤️ by [craftybot](https://github.com/yourusername) 
+Made with ❤️ by [craftybot](https://github.com/craftybot-brr) 
