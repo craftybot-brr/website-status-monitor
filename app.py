@@ -78,21 +78,6 @@ PAGES = {
 status_data = {}
 status_data_lock = threading.Lock()
 
-DEFAULT_HEADERS = {
-    'User-Agent': (
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    ),
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-}
-
-session = requests.Session()
-session.headers.update(DEFAULT_HEADERS)
-
 def check_website_status(website):
     """Check the status of a single website with improved accuracy"""
     try:
@@ -287,6 +272,3 @@ if __name__ == '__main__':
 
     debug = os.getenv('FLASK_DEBUG', '0') == '1'
     port = int(os.getenv('PORT', '8080'))
-
-    print("Starting Flask application...")
-    app.run(debug=debug, host='0.0.0.0', port=port)
