@@ -63,7 +63,8 @@ A real-time web application that monitors the status of major websites and servi
 
 5. **Run the application**:
    ```bash
-   python app.py
+   # Optional: set PORT and FLASK_DEBUG before running
+   PORT=8080 FLASK_DEBUG=0 python app.py
    ```
 
 6. **Access the dashboard**:
@@ -131,6 +132,11 @@ PAGES = {
     # Add more pages here...
 }
 ```
+
+The application reads two optional environment variables:
+
+- `PORT` - Port number for the Flask server (default `8080`)
+- `FLASK_DEBUG` - Set to `1` to enable debug mode
 
 ## 🎨 Customization
 
