@@ -101,7 +101,13 @@ download_repo() {
         mv "$INSTALL_DIR" "${INSTALL_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
     fi
     
-    mv website-status-monitor-main "$INSTALL_DIR"
+    # The extracted directory is website-status-monitor-main
+    if [[ -d "website-status-monitor-main" ]]; then
+        mv website-status-monitor-main "$INSTALL_DIR"
+    else
+        log_error "Extracted directory website-status-monitor-main not found!"
+        exit 1
+    fi
     log_success "Repository downloaded and extracted to $INSTALL_DIR"
     
     # Cleanup
